@@ -1,0 +1,138 @@
+---
+title: "L02 More Models"
+subtitle: "Data Science 3 with R (STAT 301-3)"
+author: "Anna Wagman"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    highlight: "tango"
+    code_folding: "show"
+---
+
+<!-- Set global options for R code chunks -->
+```{r global-settings, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE, message = FALSE
+)
+```
+
+## What should be turned in: A short write-up that includes:
+
+1. A nicely formatted table that lists the 8 general types of model and the best performance it achieved. 
+2. A nicely formatted table that lists the run time for the tuning process for the 8 model types (could be combined with first table).
+3. Final selection, training, and evaluation of the best model. 
+
+```{r, include = FALSE}
+#load packages
+library(tidymodels)
+library(readr)
+library(dplyr)
+library(workflows)
+library(rsample)
+library(recipes)
+library(tune)
+
+tidymodels_prefer()
+
+
+#import data prep
+load("data/wf_dataprep.rda")
+
+##load tuning R scripts
+#elastic net:
+load("model_info/en_results.rda")
+#k-nearest neighbor:
+load("model_info/knn_results.rda")
+#random forest:
+load("model_info/rf_results.rda")
+#boosted tree:
+load("model_info/boost_results.rda")
+#support vector machine:
+load("model_info/svm_results.rda")
+#support vector machine (radial)
+load("model_info/svmr_results.rda")
+#single layer neural network:
+load("model_info/slnn_results.rda")
+#multivariate adaptive regression splines:
+load("model_info/mars_results.rda")
+```
+
+
+### Model Tuning results:
+
+```{r, include=FALSE}
+tuning_results <- tibble(
+  model_type = c("en", "knn", "rf", "boost", "svm","svmr", "slnn", "mars"), 
+  tune_list = list(en_tune, knn_tune, rf_tune, boost_tune, svm_tune, svmr_tune, slnn_tune, mars_tune),
+  assessment_list = map(tune_list, collect_metrics),
+  best_model = map(tune_list, ~ select_best(.x, metric = "accuracy")))
+
+final_results <- tuning_results %>% 
+  select(model_type, assessment_list) %>% 
+  unnest(assessment_list) %>% 
+  filter(.metric == "accuracy") %>% 
+  arrange(desc(mean))
+
+model_accuracy <- tribble(
+  ~ "Model", ~ "Accuracy of model",
+  "Elastic Net", 0.812,
+  "Nearest Neighbors", 0.7072,
+  "Random Forest", .748,
+  "Boosted Tree", 0.749, 
+  "Support Vector Machine", 0.786,
+  "Support Vector Machine (radial)", 0.767,
+  "Single Layer Neural Network", 0.7896,
+  "Multivariate Adaptive Regression Splines", 0.7777 
+  )
+
+model_time <- tribble(
+  ~ "model type", ~ "time elapsed",
+  "Elastic Net", 70.462,
+  "K-Nearest Neighbors", 10.634,
+  "Random Forest", 178.069,
+  "Boosted Tree", 515.20, 
+  "Support Vector Machine", 362.33,
+  "Support Vector Machine (radial)", 163.82,
+  "Single Layer Neural Network", 101.10,
+  "Multivariate Adaptive Regression Splines", 18.85
+  )
+
+#final_results <- tuning_results %>% 
+#  select(model_type, model_accuracy) %>% 
+#  unnest(accuracy_model)
+```
+
+
+```{r}
+model_accuracy
+model_time
+```
+
+
+**The Elastic Net model has the highest accuracy at .812 and the third lowest run time on a 1 minute and 10 seconds, so now we will fit this best model to the training and testing data sets.**
+
+
+```{r}
+en_final <- en_wflow %>% 
+  finalize_workflow(select_best(en_tune, metric = "accuracy"))
+en_results <- fit(en_final, wf_train)
+
+# Apply the best model to the testing data 
+predict(en_results, new_data = wf_test) %>% 
+  bind_cols(wf_test %>% select(wlf)) %>% 
+  accuracy(truth = wlf, estimate = .pred_class)
+
+pred_vs_real <- predict(en_results, new_data = wf_test) %>% 
+  bind_cols(wf_test %>% select(wlf))
+
+pred_vs_real
+```
+
+
+**The accuracy estimate is .87, which is very good and also pretty close to the original value of .812**
+
+## Github Repo Link
+
+<https://github.com/annawagman1/l02-more-models-annawagman1>
+
